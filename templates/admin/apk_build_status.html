@@ -1,0 +1,92 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}
+    <meta http-equiv="refresh" content="10">
+    <style>
+        .build-status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .status-pending { background: #fff3cd; border-color: #ffeaa7; }
+        .status-building { background: #d1ecf1; border-color: #85c1e9; }
+        .status-completed { background: #d4edda; border-color: #a3d977; }
+        .status-failed { background: #f8d7da; border-color: #f1556c; }
+        .build-log {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="results">
+    <h1>🔨 حالة بناء APK - {{ project.name }}</h1>
+    
+    <div style="margin: 20px 0;">
+        <a href="{% url 'admin:generator_flutterproject_changelist' %}" class="button">
+            ← العودة لقائمة المشاريع
+        </a>
+        <a href="{% url 'admin:build_apk' project.id %}" class="button">
+            🔨 بدء بناء جديد
+        </a>
+    </div>
+
+    {% for build in builds %}
+    <div class="build-status status-{{ build.status }}">
+        <h3>
+            📅 {{ build.created_at|date:"Y-m-d H:i" }}
+            <span style="float: right;">
+                {% if build.status == 'pending' %}⏳ في الانتظار
+                {% elif build.status == 'building' %}🔨 قيد البناء
+                {% elif build.status == 'completed' %}✅ مكتمل
+                {% elif build.status == 'failed' %}❌ فشل
+                {% endif %}
+            </span>
+        </h3>
+        
+        {% if build.status == 'completed' and build.download_url %}
+            <p>
+                <strong>📱 APK جاهز:</strong> 
+                <a href="{{ build.download_url }}" class="button">تحميل ({{ build.file_size_mb }} MB)</a>
+            </p>
+        {% endif %}
+        
+        {% if build.error_message %}
+            <p><strong>❌ خطأ:</strong> {{ build.error_message }}</p>
+        {% endif %}
+        
+        {% if build.build_log %}
+            <details>
+                <summary><strong>📋 سجل البناء</strong></summary>
+                <div class="build-log">{{ build.build_log }}</div>
+            </details>
+        {% endif %}
+        
+        {% if build.completed_at %}
+            <p><small>⏱️ اكتمل في: {{ build.completed_at|date:"Y-m-d H:i:s" }}</small></p>
+        {% endif %}
+    </div>
+    {% empty %}
+    <p>لا توجد عمليات بناء APK لهذا المشروع بعد.</p>
+    {% endfor %}
+</div>
+
+{% if builds.0.status == 'building' or builds.0.status == 'pending' %}
+<script>
+    // Auto-refresh every 10 seconds if there's an active build
+    setTimeout(function() {
+        location.reload();
+    }, 10000);
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,73 @@
+# Create: templates/admin/flutter_code_preview.html
+
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_list %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}
+    <style>
+        .code-preview {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .file-section {
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .file-header {
+            background: #007cba;
+            color: white;
+            padding: 10px;
+            font-weight: bold;
+        }
+        .download-section {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .download-btn {
+            background: #417690;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="results">
+    <h1>معاينة كود Flutter - {{ project.name }}</h1>
+    
+    <div class="download-section">
+        <a href="{% url 'admin:download_project_zip' project.id %}" class="download-btn">
+            📦 تحميل ZIP
+        </a>
+        <a href="{% url 'admin:build_apk' project.id %}" class="download-btn">
+            🔨 بناء APK
+        </a>
+    </div>
+
+    {% for filename, content in code.items %}
+    <div class="file-section">
+        <div class="file-header">📄 {{ filename }}</div>
+        <div class="code-preview">{{ content }}</div>
+    </div>
+    {% endfor %}
+
+    <div style="margin: 20px 0;">
+        <a href="{% url 'admin:flutter_generator_flutterproject_changelist' %}">
+            ← العودة لقائمة المشاريع
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,323 @@
+<!-- templates/admin/discover_package.html -->
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block title %}Discover Package Widgets | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}
+<style>
+    .discover-form {
+        max-width: 800px;
+        margin: 20px 0;
+    }
+    .form-row {
+        margin: 15px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+    .form-row label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    .form-row input[type="text"] {
+        width: 100%;
+        padding: 8px;
+        font-size: 14px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+    .help-text {
+        color: #666;
+        font-size: 12px;
+        margin-top: 5px;
+    }
+    .button-row {
+        margin: 20px 0;
+    }
+    .button-row button {
+        padding: 10px 20px;
+        margin-right: 10px;
+        font-size: 14px;
+        cursor: pointer;
+    }
+    .popular-packages {
+        margin: 30px 0;
+        padding: 20px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    .package-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 10px;
+        margin-top: 15px;
+    }
+    .package-card {
+        padding: 10px;
+        background: #f0f0f0;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .package-card:hover {
+        background: #e0e0e0;
+    }
+    .package-card strong {
+        display: block;
+        margin-bottom: 5px;
+    }
+    .package-card small {
+        color: #666;
+    }
+    .discovery-results {
+        margin: 20px 0;
+        padding: 15px;
+        background: #e8f5e9;
+        border: 1px solid #4caf50;
+        border-radius: 5px;
+        display: none;
+    }
+    .discovery-results.error {
+        background: #ffebee;
+        border-color: #f44336;
+    }
+    .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+    }
+    .loading.active {
+        display: block;
+    }
+    .spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #3498db;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .widget-list {
+        margin-top: 10px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .widget-item {
+        padding: 5px;
+        margin: 3px 0;
+        background: white;
+        border-radius: 3px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>🔍 Discover Package Widgets</h1>
+
+<div class="discover-form">
+    <form method="post" id="discoverForm">
+        {% csrf_token %}
+
+        <div class="form-row">
+            <label for="package_name">Package Name</label>
+            <input type="text"
+                   id="package_name"
+                   name="package_name"
+                   placeholder="e.g., carousel_slider, video_player, google_maps_flutter"
+                   required>
+            <div class="help-text">
+                Enter the exact package name from pub.dev
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label>
+                <input type="checkbox" name="force" id="force">
+                Force re-discovery (override existing widgets)
+            </label>
+        </div>
+
+        <div class="form-row">
+            <label>
+                <input type="checkbox" name="dry_run" id="dry_run">
+                Dry run (preview without saving)
+            </label>
+        </div>
+
+        <div class="button-row">
+            <button type="submit" class="button default">🔍 Discover Package</button>
+            <button type="button" class="button" onclick="analyzePackage()">📊 Analyze Only</button>
+            <a href="{% url 'admin:generator_widgettype_changelist' %}" class="button">
+                ← Back to Widget Types
+            </a>
+        </div>
+    </form>
+
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>Discovering package widgets...</p>
+    </div>
+
+    <div class="discovery-results" id="results"></div>
+</div>
+
+<div class="popular-packages">
+    <h2>📦 Popular Packages</h2>
+    <p>Click on any package to quickly discover its widgets:</p>
+
+    <div class="package-grid">
+        <div class="package-card" onclick="quickDiscover('carousel_slider')">
+            <strong>carousel_slider</strong>
+            <small>Image carousel widget</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('video_player')">
+            <strong>video_player</strong>
+            <small>Video playback widget</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('google_maps_flutter')">
+            <strong>google_maps_flutter</strong>
+            <small>Google Maps widget</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('cached_network_image')">
+            <strong>cached_network_image</strong>
+            <small>Image caching widget</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('image_picker')">
+            <strong>image_picker</strong>
+            <small>Image selection widget</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('url_launcher')">
+            <strong>url_launcher</strong>
+            <small>Launch URLs widget</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('shared_preferences')">
+            <strong>shared_preferences</strong>
+            <small>Local storage</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('dio')">
+            <strong>dio</strong>
+            <small>HTTP client</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('provider')">
+            <strong>provider</strong>
+            <small>State management</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('flutter_bloc')">
+            <strong>flutter_bloc</strong>
+            <small>BLoC pattern</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('get')">
+            <strong>get</strong>
+            <small>State management & navigation</small>
+        </div>
+        <div class="package-card" onclick="quickDiscover('riverpod')">
+            <strong>riverpod</strong>
+            <small>State management</small>
+        </div>
+    </div>
+</div>
+
+<script>
+function quickDiscover(packageName) {
+    document.getElementById('package_name').value = packageName;
+    document.getElementById('discoverForm').submit();
+}
+
+function analyzePackage() {
+    const packageName = document.getElementById('package_name').value;
+    if (!packageName) {
+        alert('Please enter a package name');
+        return;
+    }
+
+    const loading = document.getElementById('loading');
+    const results = document.getElementById('results');
+
+    loading.classList.add('active');
+    results.style.display = 'none';
+
+    fetch('{% url "admin:analyze_package_api" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            package_name: packageName
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        loading.classList.remove('active');
+
+        if (data.success) {
+            results.classList.remove('error');
+            results.innerHTML = formatAnalysisResults(data.data);
+        } else {
+            results.classList.add('error');
+            results.innerHTML = `<strong>Error:</strong> ${data.error}`;
+        }
+
+        results.style.display = 'block';
+    })
+    .catch(error => {
+        loading.classList.remove('active');
+        results.classList.add('error');
+        results.innerHTML = `<strong>Error:</strong> ${error.message}`;
+        results.style.display = 'block';
+    });
+}
+
+function formatAnalysisResults(data) {
+    let html = '<h3>📊 Analysis Results</h3>';
+    html += `<p><strong>Package:</strong> ${data.package_name}</p>`;
+    html += `<p><strong>Version:</strong> ${data.version || 'unknown'}</p>`;
+    html += `<p><strong>Widgets Found:</strong> ${data.widgets.length}</p>`;
+
+    if (data.widgets.length > 0) {
+        html += '<div class="widget-list">';
+        html += '<h4>Discovered Widgets:</h4>';
+        data.widgets.forEach(widget => {
+            const propsCount = widget.properties ? widget.properties.length : 0;
+            html += `<div class="widget-item">`;
+            html += `<strong>${widget.name}</strong> `;
+            html += `<small>(${propsCount} properties)</small>`;
+            if (widget.properties && widget.properties.length > 0) {
+                html += '<ul style="margin: 5px 0; font-size: 12px;">';
+                widget.properties.slice(0, 3).forEach(prop => {
+                    html += `<li>${prop.name}: ${prop.type || 'unknown'}`;
+                    if (prop.required) html += ' <em>(required)</em>';
+                    html += '</li>';
+                });
+                if (widget.properties.length > 3) {
+                    html += `<li><em>...and ${widget.properties.length - 3} more</em></li>`;
+                }
+                html += '</ul>';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    return html;
+}
+
+// Handle form submission
+document.getElementById('discoverForm').addEventListener('submit', function(e) {
+    const loading = document.getElementById('loading');
+    const results = document.getElementById('results');
+
+    if (!document.getElementById('dry_run').checked) {
+        loading.classList.add('active');
+        results.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

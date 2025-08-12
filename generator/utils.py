@@ -104,23 +104,41 @@ class FlutterCodeGenerator:
             if project_package.package.name == 'carousel_slider':
                 uses_carousel = True
                 continue
-            version = project_package.version or f"^{project_package.package.version}"
+
+            # Fix version handling - never use "latest"
+            version = project_package.version
+            if not version or version.lower() == 'latest':
+                # Use package's stored version or default to 'any'
+                version = project_package.package.version
+                if not version or version.lower() == 'latest':
+                    version = 'any'  # Flutter accepts 'any' as a version constraint
+
+            # Ensure version has proper format
+            if version and version != 'any' and not version.startswith('^') and not version.startswith('>='):
+                version = f"^{version}"
+
             dependencies[project_package.package.name] = version
 
-        # Add packages from dynamic components if using dynamic system
-        if self.use_dynamic:
-            used_packages = set()
-            for component in self.project.dynamic_components.all():
-                if component.widget_type.package:
-                    # Skip carousel_slider
-                    if component.widget_type.package.name == 'carousel_slider':
-                        uses_carousel = True
-                        continue
-                    used_packages.add(component.widget_type.package)
+            # Add packages from dynamic components if using dynamic system
+            if self.use_dynamic:
+                used_packages = set()
+                for component in self.project.dynamic_components.all():
+                    if component.widget_type.package:
+                        # Skip carousel_slider
+                        if component.widget_type.package.name == 'carousel_slider':
+                            uses_carousel = True
+                            continue
+                        used_packages.add(component.widget_type.package)
 
-            for package in used_packages:
-                if package.name not in dependencies:
-                    dependencies[package.name] = f"^{package.version}"
+                for package in used_packages:
+                    if package.name not in dependencies:
+                        # Fix version handling for dynamic packages
+                        version = package.version
+                        if not version or version.lower() == 'latest':
+                            version = 'any'
+                        elif not version.startswith('^') and not version.startswith('>='):
+                            version = f"^{version}"
+                        dependencies[package.name] = version
 
         # Use flutter_carousel_widget instead of carousel_slider (no conflicts)
         if uses_carousel:

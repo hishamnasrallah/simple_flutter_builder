@@ -74,13 +74,17 @@ class DynamicWidgetGenerator:
 
     def _generate_text_widget(self, component_data: Dict[str, Any]) -> str:
         """Special handling for Text widget to ensure data is always present"""
+        import html
         props = component_data.get('properties', {})
 
         # Get text data - REQUIRED for Text widget
         text_data = props.get('data', props.get('text', 'Text'))
 
+        # Decode any HTML entities first
+        text_data = html.unescape(str(text_data))
+
         # Escape single quotes in text
-        text_data = str(text_data).replace("'", "\\'")
+        text_data = text_data.replace("'", "\\'")
 
         # Handle text style
         style_props = []

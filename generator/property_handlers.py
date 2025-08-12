@@ -28,10 +28,15 @@ class PropertyHandler(ABC):
 class StringPropertyHandler(PropertyHandler):
     def transform(self, value, context=None):
         if value is None:
-            return "null"
-        # Escape quotes and special characters
-        escaped = str(value).replace('\\', '\\\\').replace("'", "\\'")
-        return f"'{escaped}'"
+            return "{}"
+
+        if isinstance(value, dict):
+            import html
+            items = []
+            for k, v in value.items():
+                # Decode HTML entities in keys
+                clean_key = html.unescape(str(k)) if isinstance(k, str) else k
+                key = f"'{clean_key}'"
 
     def validate(self, value):
         return isinstance(value, (str, type(None)))
@@ -252,8 +257,15 @@ class EdgeInsetsPropertyHandler(PropertyHandler):
 
         # Handle different input formats
         if isinstance(value, dict):
-            if 'all' in value:
-                return f"EdgeInsets.all({value['all']}.0)"
+            # Decode any HTML entities in keys
+            import html
+            clean_dict = {}
+            for k, v in value.items():
+                clean_key = html.unescape(str(k)) if isinstance(k, str) else k
+                clean_dict[clean_key] = v
+
+            if 'all' in clean_dict:
+                return f"EdgeInsets.all({clean_dict['all']}.0)"
             elif 'symmetric' in value:
                 sym = value['symmetric']
                 if isinstance(sym, dict):
@@ -473,6 +485,10 @@ class PropertyHandlerFactory:
             base_handler = cls.get_handler(base_type, **kwargs)
             return ListPropertyHandler(base_handler)
 
+        # Handle custom types (functions, callbacks, etc.)
+        if property_type == 'custom':
+            return CustomPropertyHandler()
+
         # Default to string handler
         return StringPropertyHandler()
 
@@ -480,3 +496,34 @@ class PropertyHandlerFactory:
     def clear_handlers(cls):
         """Clear all registered handlers"""
         cls._handlers.clear()
+
+
+class CustomPropertyHandler(PropertyHandler):
+    """Handler for custom properties like functions, callbacks, etc."""
+
+    def transform(self, value, context=None):
+        if value is None:
+            return "null"
+
+        import html
+
+        # If it's a string that looks like a function
+        if isinstance(value, str):
+            # Decode HTML entities
+            decoded = html.unescape(str(value))
+
+            # Check if it's a function literal
+            if decoded.strip().startswith('()') or decoded.strip().startswith('(') and '=>' in decoded:
+                return decoded
+            # Check if it's just a function reference
+            elif decoded == '() {}' or decoded.strip() == '(){}':
+                return '() {}'
+            else:
+                # Return as-is if it looks like valid Dart code
+                return decoded
+
+        # For other types, convert to string
+        return str(value)
+
+    def validate(self, value):
+        return True

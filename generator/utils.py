@@ -188,10 +188,65 @@ class {page_name} extends StatelessWidget {{
         """إنشاء كود widget واحد"""
         props = component.properties
 
+        # Fix color names to use proper camelCase
+        def fix_color_name(color_name):
+            """Convert color names to proper Flutter format"""
+            color_map = {
+                'lightblue': 'lightBlue',
+                'lightgreen': 'lightGreen',
+                'lightgrey': 'grey',
+                'lightgray': 'grey',
+                'darkblue': 'blue',
+                'darkgreen': 'green',
+                'deeporange': 'deepOrange',
+                'deeppurple': 'deepPurple',
+                'bluegrey': 'blueGrey',
+                'lightblueaccent': 'lightBlueAccent',
+                'greenaccent': 'greenAccent',
+                'redaccent': 'redAccent',
+                'yellowaccent': 'yellowAccent',
+                'orangeaccent': 'orangeAccent',
+                'purpleaccent': 'purpleAccent',
+                'pinkaccent': 'pinkAccent',
+                'cyanaccent': 'cyanAccent',
+                'indigoaccent': 'indigoAccent',
+                'tealaccent': 'tealAccent',
+                'limeaccent': 'limeAccent',
+                'amberaccent': 'amberAccent',
+                'deeporangeaccent': 'deepOrangeAccent',
+                'deeppurpleaccent': 'deepPurpleAccent'
+            }
+
+            # Convert to lowercase for comparison
+            color_lower = str(color_name).lower()
+
+            # Check if it needs mapping
+            if color_lower in color_map:
+                return color_map[color_lower]
+
+            # Standard colors that should work as-is
+            standard_colors = [
+                'red', 'pink', 'purple', 'indigo', 'blue', 'cyan', 'teal',
+                'green', 'lime', 'yellow', 'amber', 'orange', 'brown',
+                'grey', 'gray', 'black', 'white', 'transparent'
+            ]
+
+            if color_lower in standard_colors:
+                return color_lower
+
+            # For any other color, return a safe default
+            return 'blue'
+
         widget_generators = {
-            'text': lambda: f"Text('{props.get('text', 'نص افتراضي')}', style: TextStyle(fontSize: {props.get('fontSize', 16)}.0, color: Colors.{props.get('color', 'black')}))",
-            'container': lambda: f"Container(width: {props.get('width', 100)}.0, height: {props.get('height', 100)}.0, color: Colors.{props.get('color', 'blue')})",
+            'text': lambda: f"Text('{props.get('text', 'نص افتراضي')}', style: TextStyle(fontSize: {props.get('fontSize', 16)}.0, color: Colors.{fix_color_name(props.get('color', 'black'))}))",
+            'container': lambda: f"Container(width: {props.get('width', 100)}.0, height: {props.get('height', 100)}.0, color: Colors.{fix_color_name(props.get('color', 'blue'))})",
             'button': lambda: f"ElevatedButton(onPressed: () {{}}, child: Text('{props.get('text', 'اضغط هنا')}'))",
+            'image': lambda: f"Image.network('{props.get('url', 'https://via.placeholder.com/150')}', width: {props.get('width', 150)}.0, height: {props.get('height', 150)}.0)",
+            'listview': lambda: f"ListView(children: [Text('عنصر 1'), Text('عنصر 2'), Text('عنصر 3')])",
+            'column': lambda: f"Column(children: [Text('عمود')])",
+            'row': lambda: f"Row(children: [Text('صف')])",
+            'scaffold': lambda: f"Scaffold(body: Text('Scaffold'))",
+            'appbar': lambda: f"AppBar(title: Text('{props.get('title', 'عنوان')}'))"
         }
 
         generator = widget_generators.get(component.component_type)

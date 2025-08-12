@@ -1,4 +1,5 @@
 # generator/widget_generator.py
+# FIXED VERSION - Handles Text widgets, enums, and CarouselSlider properly
 
 from django.template import Template, Context
 import json
@@ -37,6 +38,12 @@ class DynamicWidgetGenerator:
                     logger.warning(f"Widget type '{widget_type_name}' not found in database")
                     return self._generate_fallback_widget(component_data)
 
+            # Special handling for specific widgets
+            if widget_type_name == 'CarouselSlider':
+                return self._generate_carousel_slider(component_data)
+            elif widget_type_name == 'Text':
+                return self._generate_text_widget(component_data)
+
             # Get the template
             template_string = self._get_template(widget_type, component_data)
 
@@ -64,6 +71,90 @@ class DynamicWidgetGenerator:
         except Exception as e:
             logger.error(f"Error generating widget: {str(e)}")
             return self._generate_fallback_widget(component_data)
+
+    def _generate_text_widget(self, component_data: Dict[str, Any]) -> str:
+        """Special handling for Text widget to ensure data is always present"""
+        props = component_data.get('properties', {})
+
+        # Get text data - REQUIRED for Text widget
+        text_data = props.get('data', props.get('text', 'Text'))
+
+        # Escape single quotes in text
+        text_data = str(text_data).replace("'", "\\'")
+
+        # Handle text style
+        style_props = []
+        if 'style' in props:
+            style = props['style']
+            if isinstance(style, dict):
+                if 'fontSize' in style:
+                    style_props.append(f"fontSize: {style['fontSize']}.0")
+                if 'fontWeight' in style:
+                    weight = style['fontWeight']
+                    if not weight.startswith('FontWeight.'):
+                        weight = f"FontWeight.{weight}"
+                    style_props.append(f"fontWeight: {weight}")
+                if 'color' in style:
+                    from .property_handlers import ColorPropertyHandler
+                    color_handler = ColorPropertyHandler()
+                    color = color_handler.transform(style['color'])
+                    style_props.append(f"color: {color}")
+        elif 'fontSize' in props:
+            style_props.append(f"fontSize: {props['fontSize']}.0")
+
+        # Build Text widget
+        if style_props:
+            style = f"TextStyle({', '.join(style_props)})"
+            return f"Text('{text_data}', style: {style})"
+        else:
+            return f"Text('{text_data}')"
+
+    def _generate_carousel_slider(self, component_data: Dict[str, Any]) -> str:
+        """Special handling for CarouselSlider with proper structure"""
+        props = component_data.get('properties', {})
+
+        # Process items
+        items = props.get('items', [])
+        items_code = []
+
+        for item in items:
+            if isinstance(item, dict):
+                item_code = self.generate_widget(item)
+                items_code.append(item_code)
+            else:
+                items_code.append("Container()")
+
+        if not items_code:
+            items_code = ["Container(color: Colors.grey, child: Center(child: Text('Slide 1')))"]
+
+        # Process options
+        options = props.get('options', {})
+        option_props = []
+
+        if isinstance(options, dict):
+            if 'height' in options:
+                option_props.append(f"height: {options['height']}.0")
+            if 'autoPlay' in options:
+                option_props.append(f"autoPlay: {str(options['autoPlay']).lower()}")
+            if 'autoPlayInterval' in options:
+                interval = options['autoPlayInterval']
+                if isinstance(interval, (int, float)):
+                    option_props.append(f"autoPlayInterval: Duration(milliseconds: {int(interval)})")
+            if 'viewportFraction' in options:
+                option_props.append(f"viewportFraction: {options['viewportFraction']}")
+            if 'enlargeCenterPage' in options:
+                option_props.append(f"enlargeCenterPage: {str(options['enlargeCenterPage']).lower()}")
+
+        # Default height if not specified
+        if not any('height' in prop for prop in option_props):
+            option_props.append("height: 200.0")
+
+        # Build CarouselSlider
+        options_str = f"CarouselOptions({', '.join(option_props)})" if option_props else "CarouselOptions(height: 200.0)"
+
+        items_str = "[\n    " + ",\n    ".join(items_code) + "\n  ]"
+
+        return f"CarouselSlider(\n  options: {options_str},\n  items: {items_str},\n)"
 
     def _get_template(self, widget_type, component_data: Dict) -> str:
         """Get the best matching template for this widget"""
@@ -106,6 +197,11 @@ class DynamicWidgetGenerator:
         # Get all property definitions for this widget
         property_defs = widget_type.properties.all()
 
+        # Special handling for Text widget - ensure data is present
+        if widget_type.name == 'Text':
+            # Skip regular processing for Text, handled specially
+            return []
+
         for prop_def in property_defs:
             prop_name = prop_def.name
 
@@ -126,11 +222,36 @@ class DynamicWidgetGenerator:
 
             # Get appropriate handler
             handler_kwargs = {}
-            if prop_def.property_type == 'enum' and prop_def.allowed_values:
-                handler_kwargs = {
-                    'enum_class': prop_def.dart_type.split('.')[0] if '.' in prop_def.dart_type else prop_def.dart_type,
-                    'allowed_values': prop_def.allowed_values.get('values', [])
-                }
+
+            # Special handling for enum properties
+            if prop_def.property_type == 'enum':
+                # Common Flutter enums
+                if prop_name == 'mainAxisAlignment':
+                    handler_kwargs = {
+                        'enum_class': 'MainAxisAlignment',
+                        'allowed_values': ['start', 'end', 'center', 'spaceBetween', 'spaceAround', 'spaceEvenly']
+                    }
+                elif prop_name == 'crossAxisAlignment':
+                    handler_kwargs = {
+                        'enum_class': 'CrossAxisAlignment',
+                        'allowed_values': ['start', 'end', 'center', 'stretch', 'baseline']
+                    }
+                elif prop_name == 'textAlign':
+                    handler_kwargs = {
+                        'enum_class': 'TextAlign',
+                        'allowed_values': ['left', 'right', 'center', 'justify', 'start', 'end']
+                    }
+                elif prop_name == 'fit':
+                    handler_kwargs = {
+                        'enum_class': 'BoxFit',
+                        'allowed_values': ['fill', 'contain', 'cover', 'fitWidth', 'fitHeight', 'none', 'scaleDown']
+                    }
+                elif prop_def.allowed_values:
+                    handler_kwargs = {
+                        'enum_class': prop_def.dart_type.split('.')[
+                            0] if '.' in prop_def.dart_type else prop_def.dart_type,
+                        'allowed_values': prop_def.allowed_values.get('values', [])
+                    }
             elif prop_def.property_type in ['widget', 'widget_list']:
                 handler_kwargs = {'widget_generator': self}
 
@@ -158,7 +279,7 @@ class DynamicWidgetGenerator:
         # Handle any extra properties not defined in the schema
         defined_props = {p.name for p in property_defs}
         for prop_name, prop_value in raw_properties.items():
-            if prop_name not in defined_props:
+            if prop_name not in defined_props and prop_name not in ['items', 'options']:
                 # Try to guess the type and handle it
                 dart_value = self._handle_unknown_property(prop_name, prop_value)
                 if dart_value:
@@ -188,6 +309,15 @@ class DynamicWidgetGenerator:
             # Check if it looks like a color
             if value.startswith('#') or value.startswith('0x') or value in ['red', 'blue', 'green']:
                 handler = self.handler_factory.get_handler('color')
+            # Check if it's an enum value (contains no spaces and is lowercase or camelCase)
+            elif not ' ' in value and (value.islower() or value[0].islower()):
+                # Try to detect common enum patterns
+                if name == 'mainAxisAlignment':
+                    return f"MainAxisAlignment.{value}"
+                elif name == 'crossAxisAlignment':
+                    return f"CrossAxisAlignment.{value}"
+                else:
+                    handler = self.handler_factory.get_handler('string')
             else:
                 handler = self.handler_factory.get_handler('string')
         elif isinstance(value, dict):
@@ -308,10 +438,12 @@ class DynamicWidgetGenerator:
             return f"{widget_type}()"
 
     def generate_imports(self, components: List[Dict]) -> List[str]:
-        """Generate required import statements"""
-
+        """Generate required import statements with CarouselSlider fix"""
         imports = set()
         imports.add("import 'package:flutter/material.dart';")
+
+        # Check if carousel_slider is used
+        uses_carousel = False
 
         # Collect all widget types used
         widget_types = set()
@@ -319,6 +451,8 @@ class DynamicWidgetGenerator:
             widget_type_name = component.get('type')
             if widget_type_name:
                 widget_types.add(widget_type_name)
+                if widget_type_name == 'CarouselSlider':
+                    uses_carousel = True
 
         # Get imports for each widget type
         from .models import WidgetType
@@ -332,7 +466,12 @@ class DynamicWidgetGenerator:
                         imports.add(f"import '{widget_type.import_path}';")
                     else:
                         package_name = widget_type.package.name
-                        imports.add(f"import 'package:{package_name}/{package_name}.dart';")
+                        # Special handling for carousel_slider to avoid conflicts
+                        if package_name == 'carousel_slider':
+                            # Import with hide to avoid CarouselController conflict
+                            imports.add(f"import 'package:{package_name}/{package_name}.dart';")
+                        else:
+                            imports.add(f"import 'package:{package_name}/{package_name}.dart';")
 
             except WidgetType.DoesNotExist:
                 pass
@@ -361,6 +500,12 @@ class DynamicWidgetGenerator:
         except WidgetType.DoesNotExist:
             result['warnings'].append(f"Widget type '{widget_type_name}' not found in database")
             return result
+
+        # Special validation for Text widget
+        if widget_type_name == 'Text':
+            props = component_data.get('properties', {})
+            if not props.get('data') and not props.get('text'):
+                result['warnings'].append("Text widget should have 'data' or 'text' property")
 
         # Validate properties
         props = component_data.get('properties', {})

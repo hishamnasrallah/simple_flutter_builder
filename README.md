@@ -63,8 +63,6 @@ python manage.py migrate
 ### Step 4: Update Admin
 Add the dynamic admin classes to your `admin.py`:
 ```python
-# In admin.py
-from .admin_dynamic import *  # Import all dynamic admin classes
 ```
 
 ### Step 5: Discover Your First Package

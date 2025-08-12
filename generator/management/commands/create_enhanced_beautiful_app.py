@@ -926,13 +926,37 @@ class Command(BaseCommand):
 
     def _create_component(self, project, page_name, widget_type_name, properties, order):
         """Helper to create a component"""
+        import html
+        import json
+
+        # Deep decode properties before saving
+        def decode_deeply(obj):
+            if isinstance(obj, str):
+                decoded = obj
+                for _ in range(5):
+                    prev = decoded
+                    decoded = html.unescape(decoded)
+                    if decoded == prev:
+                        break
+                return decoded
+            elif isinstance(obj, dict):
+                return {decode_deeply(k): decode_deeply(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [decode_deeply(item) for item in obj]
+            else:
+                return obj
+
         try:
             widget_type = WidgetType.objects.get(name=widget_type_name)
+
+            # Clean properties before saving
+            clean_properties = decode_deeply(properties)
+
             return DynamicPageComponent.objects.create(
                 project=project,
                 page_name=page_name,
                 widget_type=widget_type,
-                properties=properties,
+                properties=clean_properties,
                 order=order
             )
         except WidgetType.DoesNotExist:

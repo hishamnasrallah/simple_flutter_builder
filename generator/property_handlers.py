@@ -6,6 +6,24 @@ import json
 import re
 from typing import Any, Optional, Dict
 
+def decode_html_entities(value):
+    """Recursively decode HTML entities in strings, dicts, and lists"""
+    import html
+    if isinstance(value, str):
+        # Decode multiple times to handle multiple levels of encoding
+        decoded = value
+        for _ in range(3):  # Decode up to 3 levels deep
+            prev = decoded
+            decoded = html.unescape(decoded)
+            if decoded == prev:
+                break
+        return decoded
+    elif isinstance(value, dict):
+        return {decode_html_entities(k): decode_html_entities(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [decode_html_entities(item) for item in value]
+    else:
+        return value
 
 class PropertyHandler(ABC):
     """Base class for property value handlers"""
@@ -255,13 +273,29 @@ class EdgeInsetsPropertyHandler(PropertyHandler):
         if value is None:
             return "null"
 
+        # Decode deeply first
+        import html
+        if isinstance(value, str):
+            # Multiple decode passes
+            for _ in range(5):
+                prev = value
+                value = html.unescape(value)
+                if value == prev:
+                    break
+
         # Handle different input formats
         if isinstance(value, dict):
-            # Decode any HTML entities in keys
-            import html
+            # Deep decode all keys and values
             clean_dict = {}
             for k, v in value.items():
-                clean_key = html.unescape(str(k)) if isinstance(k, str) else k
+                # Decode key
+                clean_key = k
+                if isinstance(k, str):
+                    for _ in range(5):
+                        prev = clean_key
+                        clean_key = html.unescape(clean_key)
+                        if clean_key == prev:
+                            break
                 clean_dict[clean_key] = v
 
             if 'all' in clean_dict:
@@ -299,6 +333,14 @@ class EdgeInsetsPropertyHandler(PropertyHandler):
                     return f"EdgeInsets.all({num}.0)"
                 except:
                     pass
+
+        # If we still have a raw dict at this point, handle it
+        if isinstance(value, dict) and not isinstance(value, str):
+            # This is still a Python dict, transform it
+            if 'all' in value:
+                return f"EdgeInsets.all({value['all']}.0)"
+            else:
+                return "EdgeInsets.zero"
 
         return "EdgeInsets.zero"
 
@@ -505,12 +547,10 @@ class CustomPropertyHandler(PropertyHandler):
         if value is None:
             return "null"
 
-        import html
-
         # If it's a string that looks like a function
         if isinstance(value, str):
-            # Decode HTML entities
-            decoded = html.unescape(str(value))
+            # Decode HTML entities multiple times
+            decoded = decode_html_entities(value)
 
             # Check if it's a function literal
             if decoded.strip().startswith('()') or decoded.strip().startswith('(') and '=>' in decoded:

@@ -95,54 +95,45 @@ class FlutterCodeGenerator:
             'cupertino_icons': '^1.0.2'
         }
 
-        # Check if carousel_slider is needed
-        uses_carousel = False
+        # Track which packages are actually available
+        available_packages = set()
 
         # Add project packages
         for project_package in self.project.packages.all():
-            # Skip carousel_slider for now due to conflict
-            if project_package.package.name == 'carousel_slider':
-                uses_carousel = True
+            package_name = project_package.package.name
+
+            # Skip problematic or deprecated packages
+            deprecated_packages = ['charts_flutter', 'carousel_slider']
+            if package_name in deprecated_packages:
                 continue
 
-            # Fix version handling - never use "latest"
-            version = project_package.version
-            if not version or version.lower() == 'latest':
-                # Use package's stored version or default to 'any'
-                version = project_package.package.version
+            # Check if package should be replaced
+            package_replacements = {
+                'carousel_slider': ('flutter_carousel_widget', '^2.2.0'),
+                'charts_flutter': ('fl_chart', '^0.63.0'),
+                'badges': ('badges', '^3.1.0'),
+                'flutter_speed_dial': ('speed_dial_fab', '^2.3.0')
+            }
+
+            if package_name in package_replacements:
+                replacement_name, replacement_version = package_replacements[package_name]
+                dependencies[replacement_name] = replacement_version
+                available_packages.add(replacement_name)
+            else:
+                version = project_package.version
                 if not version or version.lower() == 'latest':
-                    version = 'any'  # Flutter accepts 'any' as a version constraint
+                    version = project_package.package.version
+                    if not version or version.lower() == 'latest':
+                        version = 'any'
 
-            # Ensure version has proper format
-            if version and version != 'any' and not version.startswith('^') and not version.startswith('>='):
-                version = f"^{version}"
+                if version and version != 'any' and not version.startswith('^') and not version.startswith('>='):
+                    version = f"^{version}"
 
-            dependencies[project_package.package.name] = version
+                dependencies[package_name] = version
+                available_packages.add(package_name)
 
-            # Add packages from dynamic components if using dynamic system
-            if self.use_dynamic:
-                used_packages = set()
-                for component in self.project.dynamic_components.all():
-                    if component.widget_type.package:
-                        # Skip carousel_slider
-                        if component.widget_type.package.name == 'carousel_slider':
-                            uses_carousel = True
-                            continue
-                        used_packages.add(component.widget_type.package)
-
-                for package in used_packages:
-                    if package.name not in dependencies:
-                        # Fix version handling for dynamic packages
-                        version = package.version
-                        if not version or version.lower() == 'latest':
-                            version = 'any'
-                        elif not version.startswith('^') and not version.startswith('>='):
-                            version = f"^{version}"
-                        dependencies[package.name] = version
-
-        # Use flutter_carousel_widget instead of carousel_slider (no conflicts)
-        if uses_carousel:
-            dependencies['flutter_carousel_widget'] = '^2.2.0'
+        # Store available packages for import generation
+        self.available_packages = available_packages
 
         pubspec = {
             'name': safe_package_name,
@@ -221,10 +212,15 @@ class MyApp extends StatelessWidget {{
             "import 'package:flutter/material.dart';"
         ]
 
-        # Add imports for packages (skip carousel_slider)
+        # Add project package imports (skip carousel_slider)
         for project_package in self.project.packages.all():
-            if project_package.package.name != 'carousel_slider':
-                imports.append(f"import 'package:{project_package.package.name}/{project_package.package.name}.dart';")
+            package_name = project_package.package.name
+            if package_name != 'carousel_slider':
+                if package_name == 'badges':
+                    # Import badges with prefix to avoid conflict
+                    imports.add(f"import 'package:badges/badges.dart' as badges;")
+                else:
+                    imports.add(f"import 'package:{package_name}/{package_name}.dart';")
 
         pages = self._generate_legacy_pages()
 
@@ -258,33 +254,46 @@ class MyApp extends StatelessWidget {{
         imports = set()
         imports.add("import 'package:flutter/material.dart';")
 
-        uses_carousel = False
+        # Package replacements map
+        package_replacements = {
+            'carousel_slider': 'flutter_carousel_widget',
+            'charts_flutter': 'fl_chart',
+            'flutter_speed_dial': None,  # We'll implement inline
+            'badges': None,  # We'll implement inline
+        }
 
         # Collect all widget types
         widget_types = set()
         for page_components in components_by_page.values():
             for component in page_components:
                 widget_types.add(component.widget_type)
-                if component.widget_type.name == 'CarouselSlider':
-                    uses_carousel = True
-                elif component.widget_type.package:
-                    if component.widget_type.import_path:
-                        imports.add(f"import '{component.widget_type.import_path}';")
-                    else:
-                        package_name = component.widget_type.package.name
-                        # Skip carousel_slider package
-                        if package_name != 'carousel_slider':
-                            imports.add(f"import 'package:{package_name}/{package_name}.dart';")
 
-        # Add project package imports (skip carousel_slider)
+        # Add imports for widget packages
+        for widget_type in widget_types:
+            if widget_type.package:
+                package_name = widget_type.package.name
+
+                # Check if package needs replacement
+                if package_name in package_replacements:
+                    replacement = package_replacements[package_name]
+                    if replacement:
+                        imports.add(f"import 'package:{replacement}/{replacement}.dart';")
+                    # If replacement is None, we handle it inline
+                elif widget_type.import_path:
+                    imports.add(f"import '{widget_type.import_path}';")
+                else:
+                    imports.add(f"import 'package:{package_name}/{package_name}.dart';")
+
+        # Add project package imports with replacements
         for project_package in self.project.packages.all():
             package_name = project_package.package.name
-            if package_name != 'carousel_slider':
-                imports.add(f"import 'package:{package_name}/{package_name}.dart';")
 
-        # Use alternative carousel if needed
-        if uses_carousel:
-            imports.add("import 'package:flutter_carousel_widget/flutter_carousel_widget.dart';")
+            if package_name in package_replacements:
+                replacement = package_replacements[package_name]
+                if replacement:
+                    imports.add(f"import 'package:{replacement}/{replacement}.dart';")
+            else:
+                imports.add(f"import 'package:{package_name}/{package_name}.dart';")
 
         return sorted(list(imports))
 

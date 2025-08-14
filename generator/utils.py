@@ -182,7 +182,7 @@ class FlutterCodeGenerator:
             return self._generate_legacy_main_dart()
 
     def _generate_dynamic_main_dart(self):
-        """Generate main.dart using dynamic widgets"""
+        """Generate main.dart using dynamic widgets with proper routing"""
         # Collect all components
         components_by_page = {}
 
@@ -201,30 +201,101 @@ class FlutterCodeGenerator:
         # Use original project name for display
         display_name = self.project.name
 
+        # Check if AppRoute model exists and generate routes
+        routes_code = ""
+        initial_route = "/"
+
+        try:
+            # Try to import and use AppRoute if available
+            from generator.models import AppRoute
+
+            # Get routes for this project
+            project_routes = AppRoute.objects.filter(project=self.project)
+
+            if project_routes.exists():
+                # Build routes map
+                route_entries = []
+
+                for route in project_routes:
+                    # Make sure the page exists
+                    if route.page_name in components_by_page or route.page_name == 'HomePage':
+                        route_entries.append(f"        '{route.route_name}': (context) => {route.page_name}(),")
+
+                        # Set initial route
+                        if route.is_initial:
+                            initial_route = route.route_name
+
+                if route_entries:
+                    routes_code = f"""
+          initialRoute: '{initial_route}',
+          routes: {{
+    {chr(10).join(route_entries)}
+          }},"""
+
+        except ImportError:
+            # AppRoute model doesn't exist, fall back to basic routing
+            pass
+        except Exception as e:
+            print(f"Error generating routes: {e}")
+            pass
+
+        # If no routes were generated from AppRoute, create default routes from pages
+        if not routes_code:
+            route_entries = []
+
+            # Always add HomePage if it exists
+            if 'HomePage' in components_by_page:
+                route_entries.append("        '/': (context) => HomePage(),")
+                route_entries.append("        '/home': (context) => HomePage(),")
+
+            # Add routes for all other pages
+            for page_name in components_by_page.keys():
+                if page_name != 'HomePage':
+                    # Convert page name to route path (e.g., ProfilePage -> /profile)
+                    route_path = '/' + page_name.replace('Page', '').lower()
+                    route_entries.append(f"        '{route_path}': (context) => {page_name}(),")
+
+            # If we have multiple pages, set up routing
+            if len(route_entries) > 0:
+                routes_code = f"""
+          initialRoute: '/',
+          routes: {{
+    {chr(10).join(route_entries)}
+          }},"""
+            else:
+                # Single page app, use home property
+                routes_code = """
+          home: HomePage(),"""
+
         return f"""
-{chr(10).join(imports)}
+    {chr(10).join(imports)}
 
-void main() {{
-  runApp(MyApp());
-}}
+    void main() {{
+      runApp(MyApp());
+    }}
 
-class MyApp extends StatelessWidget {{
-  @override
-  Widget build(BuildContext context) {{
-    return MaterialApp(
-      title: '{display_name}',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      home: HomePage(),
-      debugShowCheckedModeBanner: false,
-    );
-  }}
-}}
+    class MyApp extends StatelessWidget {{
+      @override
+      Widget build(BuildContext context) {{
+        return MaterialApp(
+          title: '{display_name}',
+          theme: ThemeData(
+            primarySwatch: Colors.blue,
+            useMaterial3: true,
+          ),{routes_code}
+          debugShowCheckedModeBanner: false,
+          onUnknownRoute: (settings) {{
+            // Fallback for unknown routes
+            return MaterialPageRoute(
+              builder: (context) => {'HomePage' if 'HomePage' in components_by_page else list(components_by_page.keys())[0] if components_by_page else 'Container'}(),
+            );
+          }},
+        );
+      }}
+    }}
 
-{pages}
-"""
+    {pages}
+    """
 
     def _generate_legacy_main_dart(self):
         """Generate main.dart for legacy components"""
@@ -372,9 +443,48 @@ class MyApp extends StatelessWidget {{
             if widget_code:
                 widgets.append(widget_code)
 
-        # If no widgets, add a placeholder
+        # If no widgets, add better default content based on page
         if not widgets:
-            widgets.append("Center(child: Text('No widgets configured'))")
+            if page_name == 'HomePage':
+                widgets.append("""Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.home, size: 80, color: Colors.blue),
+                SizedBox(height: 20),
+                Text(
+                  'Welcome to ${self.project.name}',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Your app is ready!',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+                SizedBox(height: 30),
+                ElevatedButton(
+                  onPressed: () {},
+                  child: Text('Get Started'),
+                ),
+              ],
+            )""")
+            else:
+                widgets.append(f"""Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.construction, size: 60, color: Colors.orange),
+                SizedBox(height: 20),
+                Text(
+                  '{page_name}',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'This page is under construction',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
+            )""")
 
         # Generate body based on widget count
         if len(widgets) == 1:

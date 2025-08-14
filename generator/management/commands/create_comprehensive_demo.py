@@ -47,6 +47,7 @@ class Command(BaseCommand):
             self._create_profile_page(project)
             self._create_settings_page(project)
             self._create_about_page(project)
+            self._create_app_routes(project)
 
             self.stdout.write(self.style.SUCCESS(f'\n✅ Demo app created successfully!'))
             self._print_summary(project)
@@ -188,7 +189,7 @@ class Command(BaseCommand):
         self._create_component(project, 'MainPage', 'Scaffold', scaffold_props, 0)
 
     def _create_navigation_drawer(self):
-        """Create comprehensive navigation drawer"""
+        """Create the navigation drawer structure"""
         return {
             'type': 'Drawer',
             'properties': {
@@ -218,14 +219,14 @@ class Command(BaseCommand):
                                     }
                                 }
                             },
-                            # Navigation items
-                            self._create_drawer_item('Home', 'Icons.home', '/home'),
-                            self._create_drawer_item('Gallery', 'Icons.photo_library', '/gallery'),
-                            self._create_drawer_item('Camera', 'Icons.camera_alt', '/camera'),
-                            self._create_drawer_item('Maps', 'Icons.map', '/maps'),
-                            self._create_drawer_item('Forms', 'Icons.edit', '/forms'),
-                            self._create_drawer_item('Charts', 'Icons.bar_chart', '/charts'),
-                            {'type': 'Divider', 'properties': {}},
+                            # Navigation items with colors
+                            self._create_drawer_item('Home', 'Icons.home', '#6366F1', '/home'),
+                            self._create_drawer_item('Gallery', 'Icons.photo_library', '#10B981', '/gallery'),
+                            self._create_drawer_item('Camera', 'Icons.camera_alt', '#F59E0B', '/camera'),
+                            self._create_drawer_item('Maps', 'Icons.map', '#EF4444', '/maps'),
+                            self._create_drawer_item('Forms', 'Icons.edit', '#8B5CF6', '/forms'),
+                            self._create_drawer_item('Charts', 'Icons.bar_chart', '#EC4899', '/charts'),
+                            {'type': 'Divider', 'properties': {'thickness': 1}},
                             # Expansion tile with sub-items
                             {
                                 'type': 'ExpansionTile',
@@ -233,43 +234,82 @@ class Command(BaseCommand):
                                     'title': {'type': 'Text', 'properties': {'data': 'More Options'}},
                                     'leading': {'type': 'Icon', 'properties': {'icon': 'Icons.more_horiz'}},
                                     'children': [
-                                        self._create_drawer_item('Profile', 'Icons.person', '/profile'),
-                                        self._create_drawer_item('Settings', 'Icons.settings', '/settings'),
-                                        self._create_drawer_item('Help', 'Icons.help', '/help'),
-                                        self._create_drawer_item('About', 'Icons.info', '/about'),
+                                        self._create_drawer_item('Profile', 'Icons.person', '#6366F1', '/profile'),
+                                        self._create_drawer_item('Settings', 'Icons.settings', '#F59E0B', '/settings'),
+                                        self._create_drawer_item('Help', 'Icons.help', '#10B981', '/help'),
+                                        self._create_drawer_item('About', 'Icons.info', '#8B5CF6', '/about'),
                                     ]
                                 }
                             },
                             {'type': 'Divider', 'properties': {}},
-                            self._create_drawer_item('Share App', 'Icons.share', None, 'share'),
-                            self._create_drawer_item('Rate Us', 'Icons.star', None, 'rate'),
-                            self._create_drawer_item('Logout', 'Icons.exit_to_app', None, 'logout'),
+                            self._create_drawer_item('Share App', 'Icons.share', '#3B82F6', None, 'share'),
+                            self._create_drawer_item('Rate Us', 'Icons.star', '#F59E0B', None, 'rate'),
+                            self._create_drawer_item('Logout', 'Icons.exit_to_app', '#DC2626', None, 'logout'),
                         ]
                     }
                 }
             }
         }
 
-    def _create_drawer_item(self, title, icon, route=None, action=None):
-        """Create a drawer list item"""
-        onTap = '() {}'
+    def _create_drawer_item(self, title, icon, color, route=None, action=None):
+        """Create a drawer list item with proper navigation and styling"""
+        # Generate proper onTap handler
         if route:
-            onTap = f'() => Navigator.pushNamed(context, "{route}")'
+            # Ensure route starts with /
+            if not route.startswith('/'):
+                route = '/' + route
+            # Close drawer after navigation
+            onTap = f'() {{ Navigator.pushNamed(context, "{route}"); Navigator.pop(context); }}'
         elif action == 'share':
             onTap = '() => share()'
         elif action == 'rate':
             onTap = '() => rateApp()'
         elif action == 'logout':
             onTap = '() => logout()'
+        else:
+            onTap = '() {}'
 
         return {
             'type': 'ListTile',
             'properties': {
-                'leading': {'type': 'Icon', 'properties': {'icon': icon}},
-                'title': {'type': 'Text', 'properties': {'data': title}},
+                'leading': {
+                    'type': 'Container',
+                    'properties': {
+                        'padding': {'all': 8},
+                        'decoration': {
+                            'color': f'{color}20' if not action == 'logout' else color,
+                            'borderRadius': 8
+                        },
+                        'child': {
+                            'type': 'Icon',
+                            'properties': {
+                                'icon': icon,
+                                'color': color if not action == 'logout' else 'white',
+                                'size': 24
+                            }
+                        }
+                    }
+                },
+                'title': {
+                    'type': 'Text',
+                    'properties': {
+                        'data': title,
+                        'style': {'fontSize': 16, 'fontWeight': 'w500'}
+                    }
+                },
+                'trailing': {
+                    'type': 'Icon',
+                    'properties': {
+                        'icon': 'Icons.arrow_forward_ios',
+                        'size': 16,
+                        'color': 'grey'
+                    }
+                } if not action else None,
                 'onTap': onTap
             }
         }
+
+
 
     def _create_home_page(self, project):
         """Create home page with various widgets"""
@@ -1159,3 +1199,38 @@ class Command(BaseCommand):
         self.stdout.write('   5. Click "🔨 Build APK" to create the app')
 
         self.stdout.write('\n' + '=' * 60)
+
+    def _create_app_routes(self, project):
+        """Create app routes for navigation"""
+        try:
+            from generator.models import AppRoute
+
+            # Define routes for the app
+            routes = [
+                {'route_name': '/', 'page_name': 'HomePage', 'is_initial': True},
+                {'route_name': '/home', 'page_name': 'HomePage', 'is_initial': False},
+                {'route_name': '/profile', 'page_name': 'ProfilePage', 'is_initial': False},
+                {'route_name': '/settings', 'page_name': 'SettingsPage', 'is_initial': False},
+                {'route_name': '/notifications', 'page_name': 'HomePage', 'is_initial': False},  # Goes to home for now
+                {'route_name': '/help', 'page_name': 'HomePage', 'is_initial': False},  # Goes to home for now
+            ]
+
+            for route_data in routes:
+                AppRoute.objects.get_or_create(
+                    project=project,
+                    route_name=route_data['route_name'],
+                    defaults={
+                        'route_path': route_data['route_name'],
+                        'page_name': route_data['page_name'],
+                        'is_initial': route_data.get('is_initial', False),
+                        'transition_type': 'material'
+                    }
+                )
+
+            self.stdout.write('   ✅ Created navigation routes')
+
+        except ImportError:
+            # AppRoute model doesn't exist
+            self.stdout.write('   ⚠️ AppRoute model not available - using basic navigation')
+        except Exception as e:
+            self.stdout.write(f'   ⚠️ Could not create routes: {str(e)}')

@@ -141,7 +141,7 @@ class Command(BaseCommand):
                             }
                         },
                         {
-                            'type': 'Badge',
+                            'type': 'badges.Badge',
                             'properties': {
                                 'badgeContent': {'type': 'Text', 'properties': {'data': '3'}},
                                 'child': {

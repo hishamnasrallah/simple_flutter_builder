@@ -70,8 +70,10 @@ class DynamicWidgetGenerator:
                 return self._generate_icon_widget(component_data)
             elif widget_type_name in ['IconButton', 'FloatingActionButton']:
                 return self._generate_button_widget(component_data)
-            elif widget_type_name == 'Badge':
+            elif widget_type_name == 'Badge' or widget_type_name == 'badges.Badge':
                 return self._generate_badge_widget(component_data)
+            elif widget_type_name == 'SpeedDial':
+                return self._generate_speed_dial_widget(component_data)
 
             # Get the template
             template_string = self._get_template(widget_type, component_data)
@@ -729,11 +731,8 @@ class DynamicWidgetGenerator:
         return self._generate_fallback_widget(component_data)
 
     def _generate_badge_widget(self, component_data: Dict[str, Any]) -> str:
-        """Handle Badge widget with automatic fallback"""
+        """Handle Badge widget - use badges package with alias to avoid conflict"""
         props = self._decode_html_deeply(component_data.get('properties', {}))
-
-        # Check if badges package is available (you'd check this from project packages)
-        # For now, we'll create a custom badge implementation
 
         child_props = props.get('child', {})
         if isinstance(child_props, dict):
@@ -752,30 +751,13 @@ class DynamicWidgetGenerator:
         color_handler = ColorPropertyHandler()
         color = color_handler.transform(badge_color)
 
-        # Create inline Badge widget that always works
-        return f"""Stack(
-          clipBehavior: Clip.none,
-          children: [
-            {child_code},
-            Positioned(
-              right: -8,
-              top: -8,
-              child: Container(
-                padding: EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: {color},
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                constraints: BoxConstraints(
-                  minWidth: 20,
-                  minHeight: 20,
-                ),
-                child: Center(
-                  child: {badge_code},
-                ),
-              ),
-            ),
-          ],
+        # Use badges.Badge with prefix to avoid conflict with Flutter's Badge
+        return f"""badges.Badge(
+          badgeContent: {badge_code},
+          badgeStyle: badges.BadgeStyle(
+            badgeColor: {color},
+          ),
+          child: {child_code},
         )"""
 
     def _validate_and_clean_output(self, code: str) -> str:
@@ -802,3 +784,52 @@ class DynamicWidgetGenerator:
         code = re.sub(r',\s*\]', ']', code)  # Remove trailing commas before ]
 
         return code
+
+    def _generate_speed_dial_widget(self, component_data: Dict[str, Any]) -> str:
+        """Handle SpeedDial widget"""
+        props = self._decode_html_deeply(component_data.get('properties', {}))
+
+        # Process children
+        children_data = props.get('children', [])
+        children_code = []
+
+        if isinstance(children_data, list) and children_data:
+            for child in children_data:
+                if isinstance(child, dict):
+                    # Create SpeedDialChild
+                    child_code = f"""SpeedDialChild(
+              child: Icon({child.get('icon', 'Icons.add')}),
+              label: '{child.get('label', '')}',
+              onTap: {child.get('onTap', '() {}')}
+            )"""
+                    children_code.append(child_code)
+
+        # Build SpeedDial
+        parts = []
+
+        if 'icon' in props:
+            icon = props['icon']
+            if not icon.startswith('Icons.'):
+                icon = f'Icons.{icon}'
+            parts.append(f"icon: {icon}")
+
+        if 'activeIcon' in props:
+            active_icon = props['activeIcon']
+            if not active_icon.startswith('Icons.'):
+                active_icon = f'Icons.{active_icon}'
+            parts.append(f"activeIcon: {active_icon}")
+
+        if 'backgroundColor' in props:
+            from .property_handlers import ColorPropertyHandler
+            color_handler = ColorPropertyHandler()
+            color = color_handler.transform(props['backgroundColor'])
+            parts.append(f"backgroundColor: {color}")
+
+        # Add children if any, otherwise empty list
+        if children_code:
+            children_str = "[\n        " + ",\n        ".join(children_code) + "\n      ]"
+            parts.append(f"children: {children_str}")
+        else:
+            parts.append("children: []")  # Always provide empty list, not null
+
+        return f"SpeedDial(\n      {','.join(parts)}\n    )"

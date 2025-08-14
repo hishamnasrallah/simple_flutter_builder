@@ -98,13 +98,33 @@ class FlutterCodeGenerator:
         # Track which packages are actually available
         available_packages = set()
 
+        # Check which widgets are actually used in the project
+        used_widgets = set()
+        if hasattr(self.project, 'dynamic_components'):
+            for component in self.project.dynamic_components.all():
+                used_widgets.add(component.widget_type.name)
+
+        # Add replacement packages if their widgets are used
+        if 'CarouselSlider' in used_widgets:
+            dependencies['flutter_carousel_widget'] = '^2.2.0'
+            available_packages.add('flutter_carousel_widget')
+
+        if 'SpeedDial' in used_widgets:
+            dependencies['flutter_speed_dial'] = '^7.0.0'
+            available_packages.add('flutter_speed_dial')
+
+        # Always add these common packages if widgets might use them
+        if any(w in used_widgets for w in ['Chart', 'LineChart', 'BarChart', 'PieChart']):
+            dependencies['fl_chart'] = '^0.63.0'
+            available_packages.add('fl_chart')
+
         # Add project packages
         for project_package in self.project.packages.all():
             package_name = project_package.package.name
 
-            # Skip problematic or deprecated packages
+            # Skip deprecated packages that we're replacing
             deprecated_packages = ['charts_flutter', 'carousel_slider']
-            if package_name in deprecated_packages:
+            if package_name in deprecated_packages and package_name != 'carousel_slider':
                 continue
 
             # Check if package should be replaced
@@ -112,7 +132,7 @@ class FlutterCodeGenerator:
                 'carousel_slider': ('flutter_carousel_widget', '^2.2.0'),
                 'charts_flutter': ('fl_chart', '^0.63.0'),
                 'badges': ('badges', '^3.1.0'),
-                'flutter_speed_dial': ('speed_dial_fab', '^2.3.0')
+                'flutter_speed_dial': ('flutter_speed_dial', '^7.0.0')  # Keep original
             }
 
             if package_name in package_replacements:
@@ -254,13 +274,25 @@ class MyApp extends StatelessWidget {{
         imports = set()
         imports.add("import 'package:flutter/material.dart';")
 
+        # Check which widgets are actually used
+        used_widgets = set()
+        for page_components in components_by_page.values():
+            for component in page_components:
+                used_widgets.add(component.widget_type.name)
+
         # Package replacements map
         package_replacements = {
             'carousel_slider': 'flutter_carousel_widget',
             'charts_flutter': 'fl_chart',
-            'flutter_speed_dial': None,  # We'll implement inline
-            'badges': None,  # We'll implement inline
+            'flutter_speed_dial': 'flutter_speed_dial',
+            'badges': 'badges',
         }
+
+        # Completely skip these imports unless their widgets are actually used
+        skip_packages = set()
+        if not any(w in used_widgets for w in ['Chart', 'LineChart', 'BarChart', 'PieChart']):
+            skip_packages.add('fl_chart')
+            skip_packages.add('charts_flutter')
 
         # Collect all widget types
         widget_types = set()
@@ -273,27 +305,47 @@ class MyApp extends StatelessWidget {{
             if widget_type.package:
                 package_name = widget_type.package.name
 
+                # Skip packages we don't need
+                if package_name in skip_packages:
+                    continue
+
                 # Check if package needs replacement
                 if package_name in package_replacements:
                     replacement = package_replacements[package_name]
-                    if replacement:
-                        imports.add(f"import 'package:{replacement}/{replacement}.dart';")
-                    # If replacement is None, we handle it inline
+                    if replacement and replacement not in skip_packages:
+                        if replacement == 'badges':
+                            # Import badges with alias to avoid conflict
+                            imports.add(f"import 'package:badges/badges.dart' as badges;")
+                        else:
+                            imports.add(f"import 'package:{replacement}/{replacement}.dart';")
                 elif widget_type.import_path:
                     imports.add(f"import '{widget_type.import_path}';")
                 else:
-                    imports.add(f"import 'package:{package_name}/{package_name}.dart';")
+                    if package_name == 'badges':
+                        imports.add(f"import 'package:badges/badges.dart' as badges;")
+                    else:
+                        imports.add(f"import 'package:{package_name}/{package_name}.dart';")
 
         # Add project package imports with replacements
         for project_package in self.project.packages.all():
             package_name = project_package.package.name
 
+            # Skip packages we don't need
+            if package_name in skip_packages:
+                continue
+
             if package_name in package_replacements:
                 replacement = package_replacements[package_name]
-                if replacement:
-                    imports.add(f"import 'package:{replacement}/{replacement}.dart';")
+                if replacement and replacement not in skip_packages:
+                    if replacement == 'badges':
+                        imports.add(f"import 'package:badges/badges.dart' as badges;")
+                    else:
+                        imports.add(f"import 'package:{replacement}/{replacement}.dart';")
             else:
-                imports.add(f"import 'package:{package_name}/{package_name}.dart';")
+                if package_name == 'badges':
+                    imports.add(f"import 'package:badges/badges.dart' as badges;")
+                else:
+                    imports.add(f"import 'package:{package_name}/{package_name}.dart';")
 
         return sorted(list(imports))
 
